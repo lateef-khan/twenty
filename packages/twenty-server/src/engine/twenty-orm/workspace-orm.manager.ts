@@ -17,6 +17,7 @@ import type { RolePermissionConfig } from 'src/engine/twenty-orm/types/role-perm
 import { WorkspaceDataSourceService } from 'src/engine/twenty-orm/datasource/workspace-data-source.service';
 import { type WorkspaceRepository } from 'src/engine/twenty-orm/repository/workspace-repository';
 import { RecordSharingFeatureService } from 'src/engine/core-modules/record-share/services/record-sharing-feature.service';
+import { SpiritRowAccessStateService } from 'src/engine/twenty-orm/spirit-row-access/services/spirit-row-access-state.service';
 import { WorkspaceCacheService } from 'src/engine/workspace-cache/services/workspace-cache.service';
 import { convertClassNameToObjectMetadataName } from 'src/engine/workspace-manager/utils/convert-class-to-object-metadata-name.util';
 
@@ -26,6 +27,7 @@ export class WorkspaceOrmManager {
     private readonly workspaceCacheService: WorkspaceCacheService,
     private readonly workspaceDataSourceService: WorkspaceDataSourceService,
     private readonly recordSharingFeatureService: RecordSharingFeatureService,
+    private readonly spiritRowAccessStateService: SpiritRowAccessStateService,
   ) {}
 
   getRepository<T extends ObjectLiteral = ObjectRecord>(
@@ -148,6 +150,8 @@ export class WorkspaceOrmManager {
       permissionsPerRoleId,
       userWorkspaceRoleMap,
       apiKeyRoleMap,
+      spiritRowAccess:
+        await this.spiritRowAccessStateService.loadState(workspaceId),
     };
   }
 

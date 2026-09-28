@@ -23,6 +23,7 @@ import { ViewService } from 'src/engine/metadata-modules/view/services/view.serv
 import { WorkspaceOrmManager } from 'src/engine/twenty-orm/workspace-orm.manager';
 import { buildSystemAuthContext } from 'src/engine/twenty-orm/utils/build-system-auth-context.util';
 import { resolveEffectiveFlatEntityProperty } from 'src/engine/metadata-modules/overrides/utils/resolve-effective-flat-entity-property.util';
+import { filterSpiritNavigableRecords } from 'src/engine/twenty-orm/spirit-row-access/utils/filter-spirit-navigable-records.util';
 
 @Injectable()
 export class NavigateAppTool implements Tool {
@@ -74,6 +75,7 @@ export class NavigateAppTool implements Tool {
           input.objectNameSingular,
           input.recordName,
           context.workspaceId,
+          context,
         );
       case 'wait':
         return this.wait(input.durationMs);
@@ -264,6 +266,7 @@ export class NavigateAppTool implements Tool {
     objectNameSingular: string,
     recordName: string,
     workspaceId: string,
+    context: ToolExecutionContext,
   ): Promise<ToolOutput<NavigateAppToolOutput>> {
     const { flatObjectMetadataMaps, flatFieldMetadataMaps } =
       await this.workspaceManyOrAllFlatEntityMapsCacheService.getOrRecomputeManyOrAllFlatEntityMaps(
@@ -357,7 +360,14 @@ export class NavigateAppTool implements Tool {
       authContext,
     );
 
-    const recordsWithDisplayName = records.map((record) => {
+    const visibleRecords = await filterSpiritNavigableRecords({
+      workspaceOrmManager: this.workspaceOrmManager,
+      context,
+      objectNameSingular,
+      records,
+    });
+
+    const recordsWithDisplayName = visibleRecords.map((record) => {
       let displayName: string;
 
       if (isFullName) {

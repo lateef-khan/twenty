@@ -123,6 +123,7 @@ export class WorkspaceDataSourceService
       isRecordSharingEnabled: workspaceContext.isRecordSharingEnabled,
       userWorkspaceRoleMap: workspaceContext.userWorkspaceRoleMap,
       apiKeyRoleMap: workspaceContext.apiKeyRoleMap,
+      spiritRowAccess: workspaceContext.spiritRowAccess,
       eventEmitterService: this.workspaceEventEmitter,
       coreDataSource: this.coreDataSource,
     };

@@ -40,6 +40,11 @@ import {
   type RowAccessPolicySubject,
 } from 'src/engine/twenty-orm/types/row-access-policy.type';
 import { buildRowAccessPolicy } from 'src/engine/twenty-orm/utils/build-row-access-policy.util';
+import { type RolePermissionConfig } from 'src/engine/twenty-orm/types/role-permission-config';
+import {
+  applySpiritOwnerRuleToPolicy,
+  prepareSpiritOwnerInsert,
+} from 'src/engine/twenty-orm/spirit-row-access/utils/spirit-row-access-repository.util';
 import { isObjectOperationPermitted } from 'src/engine/twenty-orm/utils/is-object-operation-permitted.util';
 import { formatData } from 'src/engine/twenty-orm/utils/format-data.util';
 import { formatResult } from 'src/engine/twenty-orm/utils/format-result.util';
@@ -123,6 +128,7 @@ type WorkspaceRepositoryOptions<TEntity extends ObjectLiteral> = {
   executor: QueryExecutor;
   objectRecordsPermissions: ObjectsPermissions;
   shouldBypassPermissionChecks: boolean;
+  rolePermissionConfig?: RolePermissionConfig;
   // Suppresses the CREATED/UPDATED/DELETED database events this repository
   // would otherwise emit, and with them the snapshot SELECT that reads every
   // written row back to build the event payload. Only for bulk system writes
@@ -946,13 +952,18 @@ export class WorkspaceRepository<TEntity extends ObjectLiteral = ObjectRecord> {
       recordsToInsert = enriched.entities as Partial<ObjectRecord>[];
     }
 
+    const spiritOwnerInsert = prepareSpiritOwnerInsert(
+      this.options,
+      recordsToInsert,
+    );
+
     const { columnNames, rows, parameters, insertedColumns, formattedRecords } =
-      this.buildInsertRows(recordsToInsert);
+      this.buildInsertRows(spiritOwnerInsert.records);
 
     this.validateWriteIsPermitted({
       operationType: 'insert',
       columnsToReturn,
-      updatedColumns: insertedColumns,
+      updatedColumns: spiritOwnerInsert.lockCheckedColumns(insertedColumns),
     });
 
     this.validateRLSPredicatesForWrittenRecords(
@@ -1864,7 +1875,7 @@ export class WorkspaceRepository<TEntity extends ObjectLiteral = ObjectRecord> {
       );
     }
 
-    const policy = buildRowAccessPolicy({
+    const upstreamPolicy = buildRowAccessPolicy({
       subject: this.resolveRowAccessPolicySubject(),
       environment: this.resolveRowAccessPolicyEnvironment(),
       tableAlias: alias,
@@ -1872,6 +1883,13 @@ export class WorkspaceRepository<TEntity extends ObjectLiteral = ObjectRecord> {
       operationType,
       depth: 0,
       joinParentRelationShape: queryBuilder.getJoinParentRelationShape(alias),
+    });
+
+    const policy = applySpiritOwnerRuleToPolicy({
+      policy: upstreamPolicy,
+      repositoryOptions: this.options,
+      flatObjectMetadata,
+      alias,
     });
 
     switch (policy.kind) {

@@ -9,6 +9,7 @@ import { type FlatObjectMetadata } from 'src/engine/metadata-modules/flat-object
 import { type UserWorkspaceRoleMap } from 'src/engine/metadata-modules/role-target/types/user-workspace-role-map';
 import { type FlatRowLevelPermissionPredicateGroupMaps } from 'src/engine/metadata-modules/row-level-permission-predicate/types/flat-row-level-permission-predicate-group-maps.type';
 import { type FlatRowLevelPermissionPredicateMaps } from 'src/engine/metadata-modules/row-level-permission-predicate/types/flat-row-level-permission-predicate-maps.type';
+import { type SpiritRowAccessState } from 'src/engine/twenty-orm/spirit-row-access/types/spirit-row-access-state.type';
 import { type WorkspaceEventEmitter } from 'src/engine/workspace-event-emitter/workspace-event-emitter';
 
 export interface WorkspaceInternalContext {
@@ -24,6 +25,7 @@ export interface WorkspaceInternalContext {
   isRecordSharingEnabled: boolean;
   userWorkspaceRoleMap: UserWorkspaceRoleMap;
   apiKeyRoleMap: Record<string, string>;
+  spiritRowAccess?: SpiritRowAccessState;
   eventEmitterService: Pick<WorkspaceEventEmitter, 'emitDatabaseBatchEvent'>;
   coreDataSource: DataSource;
 }

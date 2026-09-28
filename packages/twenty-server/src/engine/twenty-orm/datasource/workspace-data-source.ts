@@ -203,6 +203,7 @@ export class WorkspaceDataSource {
       executor,
       objectRecordsPermissions,
       shouldBypassPermissionChecks,
+      rolePermissionConfig,
       shouldSkipEventEmission: shouldSkipEventEmission ?? false,
       tableShapeByObjectMetadataId: (targetObjectMetadataId) =>
         this.getTableShape(targetObjectMetadataId),

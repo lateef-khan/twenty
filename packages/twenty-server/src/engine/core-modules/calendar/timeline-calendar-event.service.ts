@@ -10,7 +10,7 @@ import { CalendarChannelVisibility } from 'twenty-shared/types';
 import { TIMELINE_CALENDAR_EVENTS_DEFAULT_PAGE_SIZE } from 'src/engine/core-modules/calendar/constants/calendar.constants';
 import { type TimelineCalendarEventsWithTotalDTO } from 'src/engine/core-modules/calendar/dtos/timeline-calendar-events-with-total.dto';
 import { FileUrlService } from 'src/engine/core-modules/file/file-url/file-url.service';
-import { RelatedPersonIdsService } from 'src/engine/core-modules/related-person-ids/services/related-person-ids.service';
+import { SpiritTimelineAccessService } from 'src/engine/twenty-orm/spirit-row-access/services/spirit-timeline-access.service';
 import { type TargetFilter } from 'src/engine/core-modules/target/utils/get-target-field-name-for-object-record.util';
 import { MessageCalendarTargetReadinessService } from 'src/engine/core-modules/target/services/message-calendar-target-readiness.service';
 import { CalendarChannelEntity } from 'src/engine/metadata-modules/calendar-channel/entities/calendar-channel.entity';
@@ -33,7 +33,7 @@ export class TimelineCalendarEventService {
     private readonly connectedAccountRepository: Repository<ConnectedAccountEntity>,
     @InjectRepository(UserWorkspaceEntity)
     private readonly userWorkspaceRepository: Repository<UserWorkspaceEntity>,
-    private readonly relatedPersonIdsService: RelatedPersonIdsService,
+    private readonly spiritTimelineAccessService: SpiritTimelineAccessService,
     private readonly fileUrlService: FileUrlService,
     private readonly messageCalendarTargetReadinessService: MessageCalendarTargetReadinessService,
   ) {}
@@ -350,11 +350,12 @@ export class TimelineCalendarEventService {
     page: number;
     pageSize: number;
   }): Promise<TimelineCalendarEventsWithTotalDTO> {
-    const personIds = await this.relatedPersonIdsService.getRelatedPersonIds({
-      workspaceId,
-      objectNameSingular,
-      recordId,
-    });
+    const { isRootVisible, personIds } =
+      await this.spiritTimelineAccessService.getRelatedPersonIdsForCaller({
+        workspaceId,
+        objectNameSingular,
+        recordId,
+      });
     const targetFilter =
       await this.messageCalendarTargetReadinessService.resolveTargetFilter({
         objectNameSingular,
@@ -362,7 +363,10 @@ export class TimelineCalendarEventService {
         workspaceId,
       });
 
-    if (!isDefined(targetFilter) && personIds.length === 0) {
+    if (
+      !isRootVisible ||
+      (!isDefined(targetFilter) && personIds.length === 0)
+    ) {
       return {
         totalNumberOfCalendarEvents: 0,
         timelineCalendarEvents: [],

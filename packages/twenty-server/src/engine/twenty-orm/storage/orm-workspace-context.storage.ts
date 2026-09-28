@@ -14,6 +14,7 @@ import { type FlatObjectMetadata } from 'src/engine/metadata-modules/flat-object
 import { type UserWorkspaceRoleMap } from 'src/engine/metadata-modules/role-target/types/user-workspace-role-map';
 import { type FlatRowLevelPermissionPredicateGroupMaps } from 'src/engine/metadata-modules/row-level-permission-predicate/types/flat-row-level-permission-predicate-group-maps.type';
 import { type FlatRowLevelPermissionPredicateMaps } from 'src/engine/metadata-modules/row-level-permission-predicate/types/flat-row-level-permission-predicate-maps.type';
+import { type SpiritRowAccessState } from 'src/engine/twenty-orm/spirit-row-access/types/spirit-row-access-state.type';
 
 export type ORMWorkspaceContext = {
   authContext: WorkspaceAuthContext;
@@ -29,6 +30,7 @@ export type ORMWorkspaceContext = {
   apiKeyRoleMap: Record<string, string>;
   flatRowLevelPermissionPredicateMaps: FlatRowLevelPermissionPredicateMaps;
   flatRowLevelPermissionPredicateGroupMaps: FlatRowLevelPermissionPredicateGroupMaps;
+  spiritRowAccess?: SpiritRowAccessState;
 };
 
 export const workspaceContextStorage =

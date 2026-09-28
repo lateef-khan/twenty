@@ -264,6 +264,8 @@ export class ActionToolProvider implements ToolProvider {
 
     return tool.execute(args, {
       workspaceId: context.workspaceId,
+      rolePermissionConfig: context.rolePermissionConfig,
+      authContext: context.authContext,
       userId: context.userId,
       userWorkspaceId: context.userWorkspaceId,
       threadId: context.threadId,

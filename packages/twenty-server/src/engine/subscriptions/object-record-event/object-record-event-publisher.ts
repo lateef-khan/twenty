@@ -48,6 +48,8 @@ import {
 } from 'src/engine/subscriptions/types/event-stream-data.type';
 import { type EventStreamPayload } from 'src/engine/subscriptions/types/event-stream-payload.type';
 import { ObjectRecordSubscriptionEvent } from 'src/engine/subscriptions/types/object-record-subscription-event.type';
+import { SpiritLiveEventService } from 'src/engine/twenty-orm/spirit-row-access/services/spirit-live-event.service';
+import { type SpiritLiveBatchGate } from 'src/engine/twenty-orm/spirit-row-access/types/spirit-live-event-gate.type';
 import { RolePermissionConfig } from 'src/engine/twenty-orm/types/role-permission-config';
 import { buildRowLevelPermissionRecordFilter } from 'src/engine/twenty-orm/utils/build-row-level-permission-record-filter.util';
 import { computePermissionIntersection } from 'src/engine/twenty-orm/utils/compute-permission-intersection.util';
@@ -79,6 +81,7 @@ export class ObjectRecordEventPublisher {
     private readonly workspaceManyOrAllFlatEntityMapsCacheService: WorkspaceManyOrAllFlatEntityMapsCacheService,
     private readonly commonSelectFieldsHelper: CommonSelectFieldsHelper,
     private readonly recordAccessPolicyService: RecordAccessPolicyService,
+    private readonly spiritLiveEventService: SpiritLiveEventService,
   ) {}
 
   async publish(
@@ -108,6 +111,9 @@ export class ObjectRecordEventPublisher {
     const eventRecordAccessGate =
       this.recordAccessPolicyService.buildEventRecordAccessGate(eventBatch);
 
+    const spiritLiveBatch =
+      await this.spiritLiveEventService.prepareBatch(workspaceId);
+
     const streamIdsToRemove: string[] = [];
 
     for (const [streamChannelId, streamData] of streamsData) {
@@ -128,6 +134,7 @@ export class ObjectRecordEventPublisher {
         flatWorkspaceMemberMaps,
         workspaceMemberIdByUserId,
         eventRecordAccessGate,
+        spiritLiveBatch,
       });
     }
 
@@ -155,6 +162,7 @@ export class ObjectRecordEventPublisher {
     flatWorkspaceMemberMaps,
     workspaceMemberIdByUserId,
     eventRecordAccessGate,
+    spiritLiveBatch,
   }: {
     streamChannelId: string;
     streamData: EventStreamData;
@@ -163,6 +171,7 @@ export class ObjectRecordEventPublisher {
     flatWorkspaceMemberMaps: FlatWorkspaceMemberMaps;
     workspaceMemberIdByUserId: Map<string, string>;
     eventRecordAccessGate: EventRecordAccessGate;
+    spiritLiveBatch: SpiritLiveBatchGate;
   }): Promise<void> {
     const roleIds = this.resolveStreamRoleIds(
       streamData.authContext,
@@ -235,6 +244,13 @@ export class ObjectRecordEventPublisher {
 
     const restrictedFields = objectPermissions.restrictedFields;
 
+    const spiritLiveStream = await spiritLiveBatch.openStream({
+      workspaceEventBatch,
+      roleIds,
+      subscriberAuthContext,
+      flatWorkspaceMemberMaps,
+    });
+
     for (const event of workspaceEventBatch.events) {
       const { action } = parseEventNameOrThrow(workspaceEventBatch.name);
 
@@ -265,9 +281,15 @@ export class ObjectRecordEventPublisher {
         continue;
       }
 
+      const deliveredEvent = spiritLiveStream.deliver(event, filteredEvent);
+
+      if (!isDefined(deliveredEvent)) {
+        continue;
+      }
+
       const matchedQueryIds = this.getMatchingObjectRecordQueryIds({
         queries: streamData.queries,
-        event: filteredEvent,
+        event: deliveredEvent,
         subscriberRLSFilter,
         objectMetadata: workspaceEventBatch.objectMetadata,
         flatFieldMetadataMaps: permissionsContext.flatFieldMetadataMaps,
@@ -279,22 +301,24 @@ export class ObjectRecordEventPublisher {
 
       matchedEvents.push({
         queryIds: matchedQueryIds,
-        objectRecordEvent: filteredEvent,
+        objectRecordEvent: deliveredEvent,
       });
     }
 
     if (matchedEvents.length > 0) {
       try {
-        await this.enrichEventBatchWithNestedRelations({
-          objectMetadata: workspaceEventBatch.objectMetadata,
-          events: matchedEvents.map(
-            (matchedEvent) => matchedEvent.objectRecordEvent,
-          ),
-          streamData,
-          workspaceId: workspaceEventBatch.workspaceId,
-          roleIds,
-          objectsPermissions,
-        });
+        await spiritLiveStream.runEnrichment(() =>
+          this.enrichEventBatchWithNestedRelations({
+            objectMetadata: workspaceEventBatch.objectMetadata,
+            events: matchedEvents.map(
+              (matchedEvent) => matchedEvent.objectRecordEvent,
+            ),
+            streamData,
+            workspaceId: workspaceEventBatch.workspaceId,
+            roleIds,
+            objectsPermissions,
+          }),
+        );
       } catch (error) {
         this.logger.warn(
           `Failed to enrich nested relations for ${workspaceEventBatch.name} subscription event, broadcasting without them: ${

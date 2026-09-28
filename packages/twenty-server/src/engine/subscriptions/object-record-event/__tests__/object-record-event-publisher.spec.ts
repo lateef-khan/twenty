@@ -27,6 +27,8 @@ import { type FlatObjectMetadata } from 'src/engine/metadata-modules/flat-object
 import { RecordAccessPolicyService } from 'src/engine/core-modules/record-share/services/record-access-policy.service';
 import { RecordShareService } from 'src/engine/core-modules/record-share/services/record-share.service';
 import { RecordSharingFeatureService } from 'src/engine/core-modules/record-share/services/record-sharing-feature.service';
+import { SPIRIT_LIVE_EVENTS_OFF } from 'src/engine/twenty-orm/spirit-row-access/constants/spirit-live-events-off.constant';
+import { SpiritLiveEventService } from 'src/engine/twenty-orm/spirit-row-access/services/spirit-live-event.service';
 import { WorkspaceOrmManager } from 'src/engine/twenty-orm/workspace-orm.manager';
 import { type RecordShare } from 'src/engine/core-modules/record-share/types/record-share.type';
 import { EventStreamService } from 'src/engine/subscriptions/event-stream.service';
@@ -348,6 +350,12 @@ describe('ObjectRecordEventPublisher', () => {
         {
           provide: WorkspaceOrmManager,
           useValue: mockWorkspaceOrmManager,
+        },
+        {
+          provide: SpiritLiveEventService,
+          useValue: {
+            prepareBatch: jest.fn().mockResolvedValue(SPIRIT_LIVE_EVENTS_OFF),
+          },
         },
       ],
     }).compile();
