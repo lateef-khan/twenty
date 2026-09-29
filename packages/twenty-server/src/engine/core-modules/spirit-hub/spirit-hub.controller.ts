@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   Body,
-  ConflictException,
   Controller,
   Get,
   Headers,
@@ -29,6 +28,7 @@ import { AuthService } from 'src/engine/core-modules/auth/services/auth.service'
 import { SignInUpService } from 'src/engine/core-modules/auth/services/sign-in-up.service';
 import { LoginTokenService } from 'src/engine/core-modules/auth/token/services/login-token.service';
 import { SpiritHubNoteService } from 'src/engine/core-modules/spirit-hub/spirit-hub-note.service';
+import { UserWorkspaceService } from 'src/engine/core-modules/user-workspace/user-workspace.service';
 import { UserEntity } from 'src/engine/core-modules/user/user.entity';
 import { AuthProviderEnum } from 'src/engine/core-modules/workspace/types/workspace.type';
 import { WorkspaceEntity } from 'src/engine/core-modules/workspace/workspace.entity';
@@ -68,6 +68,7 @@ export class SpiritHubController {
     private readonly loginTokenService: LoginTokenService,
     private readonly authService: AuthService,
     private readonly signInUpService: SignInUpService,
+    private readonly userWorkspaceService: UserWorkspaceService,
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
     @InjectRepository(WorkspaceEntity)
@@ -127,13 +128,12 @@ export class SpiritHubController {
       );
     }
 
-    // The Hub never adopts an existing Twenty user: that account may hold a
-    // password and a role someone else chose.
-    if (await this.userRepository.existsBy({ email })) {
-      throw new ConflictException('email already used in CRM');
-    }
-
     const workspace = await this.findOnlyWorkspace();
+    const existingUser = await this.userRepository.findOneBy({ email });
+
+    if (isDefined(existingUser)) {
+      return this.adoptUser(existingUser, workspace);
+    }
 
     try {
       const user = await this.signInUpService.signInUpOnExistingWorkspace({
@@ -151,13 +151,41 @@ export class SpiritHubController {
 
       return { id: user.id };
     } catch (error) {
-      // Two creates for one email at once: the loser hits the unique index.
-      if (isUniqueViolation(error)) {
-        throw new ConflictException('email already used in CRM');
+      if (!isUniqueViolation(error)) {
+        throw error;
       }
 
-      throw error;
+      // Two creates for one email at once: the loser adopts the winner's user.
+      const winner = await this.userRepository.findOneBy({ email });
+
+      if (!isDefined(winner)) {
+        throw error;
+      }
+
+      return this.adoptUser(winner, workspace);
     }
+  }
+
+  // The Person proved this email when they signed in to Spirit, so the Twenty
+  // user with it is theirs. Its password and, for a member, its role stay as
+  // they are; a user outside the workspace joins with the default role.
+  private async adoptUser(
+    user: UserEntity,
+    workspace: WorkspaceEntity,
+  ): Promise<{ id: string }> {
+    try {
+      await this.userWorkspaceService.addUserToWorkspaceIfUserNotInWorkspace(
+        user,
+        workspace,
+      );
+    } catch (error) {
+      // A concurrent create added it to the workspace first.
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
+    }
+
+    return { id: user.id };
   }
 
   private async findOnlyWorkspace(): Promise<WorkspaceEntity> {
