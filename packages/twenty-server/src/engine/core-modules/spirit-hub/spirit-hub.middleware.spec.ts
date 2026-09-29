@@ -67,6 +67,17 @@ describe('spiritHubMiddleware', () => {
     expect(next).toHaveBeenCalled();
   });
 
+  it('lets only the CRM frame itself when no hub is set', () => {
+    delete process.env.SPIRIT_HUB_ORIGIN;
+
+    const { response, next } = run('/objects/people');
+
+    expect(response.headers['content-security-policy']).toBe(
+      "frame-ancestors 'self'",
+    );
+    expect(next).toHaveBeenCalled();
+  });
+
   it('leaves API responses to the API', () => {
     const { response, next } = run('/graphql');
 

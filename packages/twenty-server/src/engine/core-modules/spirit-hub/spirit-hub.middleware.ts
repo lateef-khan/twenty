@@ -58,10 +58,14 @@ export const spiritHubMiddleware = (
   const loginUrl = process.env.SPIRIT_HUB_LOGIN_URL;
   const path = normalizePath(request.path);
 
-  if (hubOrigin && !isApiPath(path)) {
+  // Without a hub origin only the CRM may frame itself: a missing setting
+  // breaks the Hub, never the framing guard.
+  if (!isApiPath(path)) {
     response.setHeader(
       'Content-Security-Policy',
-      `frame-ancestors 'self' ${hubOrigin}`,
+      hubOrigin
+        ? `frame-ancestors 'self' ${hubOrigin}`
+        : "frame-ancestors 'self'",
     );
   }
 
