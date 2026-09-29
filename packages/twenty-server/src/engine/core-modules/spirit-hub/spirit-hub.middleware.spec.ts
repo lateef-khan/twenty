@@ -109,4 +109,15 @@ describe('spiritHubMiddleware', () => {
     );
     expect(next).not.toHaveBeenCalled();
   });
+
+  it('keeps an origin inside the sign-out script', () => {
+    process.env.SPIRIT_HUB_ORIGIN = 'http://hub.test</script><script>alert(1)';
+
+    const { response } = run('/spirit/sign-out');
+
+    expect(response.body).not.toContain('</script><script>alert(1)');
+    expect(response.body).toContain(
+      'const hub = "http://hub.test\\u003c/script>\\u003cscript>alert(1)";',
+    );
+  });
 });

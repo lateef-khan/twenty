@@ -2,6 +2,7 @@ import { type NextFunction, type Request, type Response } from 'express';
 
 const API_PATH_PREFIXES = ['/graphql', '/metadata', '/rest', '/auth'];
 
+// The origin is escaped so a "</script>" in it cannot end the script early.
 // The same call the front's SignOut mutation makes: it ends the server session
 // and clears the httpOnly twenty-session cookie. The broadcast is the one the
 // front listens to, so other open CRM tabs sign out too.
@@ -9,7 +10,7 @@ const buildSignOutPage = (hubOrigin: string) => `<!doctype html>
 <html><head><meta charset="utf-8"><title>Signing out</title></head>
 <body><script>
 (async () => {
-  const hub = ${JSON.stringify(hubOrigin)};
+  const hub = ${JSON.stringify(hubOrigin).replace(/</g, '\\u003c')};
   let status = 'sign-out-failed';
   try {
     const response = await fetch('/metadata', {
