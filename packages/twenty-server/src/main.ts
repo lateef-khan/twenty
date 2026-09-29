@@ -16,6 +16,7 @@ import { setPgDateTypeParser } from 'src/database/pg/set-pg-date-type-parser';
 import { ExceptionHandlerService } from 'src/engine/core-modules/exception-handler/exception-handler.service';
 import { LoggerService } from 'src/engine/core-modules/logger/logger.service';
 import { getSessionStorageOptions } from 'src/engine/core-modules/session-storage/session-storage.module-factory';
+import { spiritHubMiddleware } from 'src/engine/core-modules/spirit-hub/spirit-hub.middleware';
 import { TwentyConfigService } from 'src/engine/core-modules/twenty-config/twenty-config.service';
 import { configTransformers } from 'src/engine/core-modules/twenty-config/utils/config-transformers.util';
 import { UsageRecorderService } from 'src/engine/core-modules/usage/services/usage-recorder.service';
@@ -69,6 +70,8 @@ const bootstrap = async () => {
   app.set('trust proxy', trustProxy);
 
   applyCredentialedCors(app, twentyConfigService);
+
+  app.use(spiritHubMiddleware);
 
   app.use(session(getSessionStorageOptions(twentyConfigService)));
 
