@@ -1,5 +1,6 @@
 import { useSignInUp } from '@/auth/sign-in-up/hooks/useSignInUp';
 import { useSignInUpForm } from '@/auth/sign-in-up/hooks/useSignInUpForm';
+import { useSpiritHubSignInReload } from '@/auth/hooks/useSpiritHubSignInReload';
 import { isCreatingWorkspaceState } from '@/auth/states/isCreatingWorkspaceState';
 import {
   SignInUpStep,
@@ -58,6 +59,8 @@ const StyledBackground = styled.div`
 `;
 
 export const SignInUp = () => {
+  useSpiritHubSignInReload();
+
   const { t } = useLingui();
   const setSignInUpStep = useSetAtomState(signInUpStepState);
   const clientConfigApiStatus = useAtomStateValue(clientConfigApiStatusState);
