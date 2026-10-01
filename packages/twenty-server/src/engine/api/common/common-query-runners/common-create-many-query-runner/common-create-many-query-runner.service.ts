@@ -80,6 +80,9 @@ export class CommonCreateManyQueryRunnerService extends CommonBaseQueryRunnerSer
       isPrivateObject ||
       queryRunnerContext.flatObjectMetadata.readability ===
         MetadataReadability.INHERITED;
+    const isHiddenFromCreator =
+      isGatedThroughRecordShares ||
+      queryRunnerContext.repository.isSpiritInsertHiddenFromCaller;
 
     // An inherited record is reachable through its parent, so shareWith stays
     // optional there and is checked only when given
@@ -93,7 +96,7 @@ export class CommonCreateManyQueryRunnerService extends CommonBaseQueryRunnerSer
 
     if (
       !isDefined(queryRunnerContext.transactionScope) &&
-      (isGatedThroughRecordShares ||
+      (isHiddenFromCreator ||
         containsNestedRelationCreate(
           args.data,
           getNestedRelationFieldNames({
@@ -160,8 +163,7 @@ export class CommonCreateManyQueryRunnerService extends CommonBaseQueryRunnerSer
       flatObjectMetadataMaps,
       flatFieldMetadataMaps,
       repository:
-        isGatedThroughRecordShares &&
-        isDefined(queryRunnerContext.transactionScope)
+        isHiddenFromCreator && isDefined(queryRunnerContext.transactionScope)
           ? queryRunnerContext.transactionScope.getRepository(
               flatObjectMetadata.nameSingular,
               { shouldBypassPermissionChecks: true },

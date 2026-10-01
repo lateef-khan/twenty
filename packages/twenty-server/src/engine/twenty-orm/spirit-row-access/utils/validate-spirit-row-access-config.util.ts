@@ -32,7 +32,7 @@ const findUnknownKeys = (value: Record<string, unknown>, allowed: string[]) =>
 // closed. Only enabled rules are checked against the metadata: a disabled
 // rule filters nothing, so a field deleted under it cannot open or close rows.
 // An enabled rule must sit on an audited object (company, opportunity, task,
-// or an object of the workspace's custom application). A see-all role id that
+// an object of the workspace's custom application, or of one of our own apps). A see-all role id that
 // does not exist is dropped, not refused: nobody holds a deleted role, so
 // dropping it opens nothing. The dropped ids are returned so the caller can
 // log them: a role later created with the same id would be see-all at once.
@@ -43,6 +43,7 @@ export const validateSpiritRowAccessConfig = ({
   flatRoleMaps,
   workspaceMemberObjectMetadataId,
   workspaceCustomApplicationId,
+  ownApplicationIds,
 }: {
   rawConfig: unknown;
   flatObjectMetadataMaps: FlatEntityMaps<FlatObjectMetadata>;
@@ -50,6 +51,7 @@ export const validateSpiritRowAccessConfig = ({
   flatRoleMaps: FlatRoleMaps;
   workspaceMemberObjectMetadataId: string | undefined;
   workspaceCustomApplicationId: string | undefined;
+  ownApplicationIds: string[];
 }): SpiritRowAccessConfigValidation => {
   const problems: string[] = [];
 
@@ -130,10 +132,11 @@ export const validateSpiritRowAccessConfig = ({
           !isSpiritRuleObjectAllowed({
             flatObjectMetadata,
             workspaceCustomApplicationId,
+            ownApplicationIds,
           })
         ) {
           problems.push(
-            `rules[${index}] object ${flatObjectMetadata.nameSingular} cannot hold a rule: only company, opportunity, task and the workspace's own custom objects can`,
+            `rules[${index}] object ${flatObjectMetadata.nameSingular} cannot hold a rule: only company, opportunity, task, the workspace's own custom objects and objects of our own apps can`,
           );
         } else {
           const joinColumnName = resolveSpiritOwnerJoinColumnName({

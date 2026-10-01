@@ -8,6 +8,7 @@ import { RelationType } from 'src/engine/metadata-modules/field-metadata/interfa
 import {
   SPIRIT_ROW_ACCESS_APPLICATION_UNIVERSAL_IDENTIFIER,
   SPIRIT_ROW_ACCESS_CONFIG_VARIABLE_KEY,
+  SPIRIT_ROW_ACCESS_OWN_APPLICATION_UNIVERSAL_IDENTIFIERS,
 } from 'src/engine/twenty-orm/spirit-row-access/constants/spirit-row-access-application.constant';
 import { SpiritRowAccessStateService } from 'src/engine/twenty-orm/spirit-row-access/services/spirit-row-access-state.service';
 import { type WorkspaceCacheService } from 'src/engine/workspace-cache/services/workspace-cache.service';
@@ -22,6 +23,21 @@ const ACCOUNT_OWNER_ID = 'field-account-owner';
 const ADMIN_ROLE_ID = 'role-admin';
 const MANAGER_ROLE_ID = 'role-manager';
 const WORKSPACE_CUSTOM_APPLICATION_ID = 'application-workspace-custom';
+const SPIRIT_APPLICATION_ID = 'application-spirit';
+const LEAD_ID = 'object-lead';
+const LEAD_OWNER_ID = 'field-lead-owner';
+
+const LEAD_RULE_CONFIG = {
+  version: 1,
+  rules: [
+    {
+      objectMetadataId: LEAD_ID,
+      ownerFieldMetadataId: LEAD_OWNER_ID,
+      isEnabled: true,
+    },
+  ],
+  seeAllRoleIds: [],
+};
 
 const COMPANY_RULE_CONFIG = {
   version: 1,
@@ -65,6 +81,15 @@ const buildObjectMaps = () =>
       isActive: true,
       fieldIds: [],
     },
+    {
+      id: LEAD_ID,
+      universalIdentifier: 'object-lead-uid',
+      nameSingular: 'lead',
+      applicationId: SPIRIT_APPLICATION_ID,
+      isSystem: false,
+      isActive: true,
+      fieldIds: [LEAD_OWNER_ID],
+    },
   ] as never);
 
 const buildFieldMaps = () =>
@@ -82,6 +107,19 @@ const buildFieldMaps = () =>
         joinColumnName: 'accountOwnerId',
       },
     },
+    {
+      id: LEAD_OWNER_ID,
+      universalIdentifier: 'field-lead-owner-uid',
+      name: 'owner',
+      type: FieldMetadataType.RELATION,
+      objectMetadataId: LEAD_ID,
+      relationTargetObjectMetadataId: WORKSPACE_MEMBER_ID,
+      isActive: true,
+      settings: {
+        relationType: RelationType.MANY_TO_ONE,
+        joinColumnName: 'ownerId',
+      },
+    },
   ] as never);
 
 const buildRoleMaps = () =>
@@ -93,10 +131,23 @@ const buildRoleMaps = () =>
     { id: MANAGER_ROLE_ID, universalIdentifier: 'role-manager-uid' },
   ]);
 
-const buildApplicationMaps = () => ({
-  byId: { [APPLICATION_ID]: { id: APPLICATION_ID } },
+const buildApplicationMaps = ({
+  isSpiritInstalled = false,
+}: { isSpiritInstalled?: boolean } = {}) => ({
+  byId: {
+    [APPLICATION_ID]: { id: APPLICATION_ID },
+    ...(isSpiritInstalled
+      ? { [SPIRIT_APPLICATION_ID]: { id: SPIRIT_APPLICATION_ID } }
+      : {}),
+  },
   idByUniversalIdentifier: {
     [SPIRIT_ROW_ACCESS_APPLICATION_UNIVERSAL_IDENTIFIER]: APPLICATION_ID,
+    ...(isSpiritInstalled
+      ? {
+          [SPIRIT_ROW_ACCESS_OWN_APPLICATION_UNIVERSAL_IDENTIFIERS[0]]:
+            SPIRIT_APPLICATION_ID,
+        }
+      : {}),
   },
 });
 
@@ -297,6 +348,31 @@ describe('SpiritRowAccessStateService memo', () => {
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0][0]).toContain('role-deleted');
     expect(warn.mock.calls[0][0]).not.toContain(MANAGER_ROLE_ID);
+  });
+
+  it('accepts a rule on an object of our own app only while that app is installed', async () => {
+    plaintextByCiphertext['cipher-5'] = JSON.stringify(LEAD_RULE_CONFIG);
+    cacheMaps = {
+      ...cacheMaps,
+      applicationVariableMaps: buildVariableMaps('cipher-5'),
+    };
+
+    const withoutApp = await service.loadState(WORKSPACE_ID);
+
+    cacheMaps = {
+      ...cacheMaps,
+      flatApplicationMaps: buildApplicationMaps({ isSpiritInstalled: true }),
+    };
+
+    const withApp = await service.loadState(WORKSPACE_ID);
+
+    expect(withoutApp?.configStatus).toBe('invalid');
+    expect(withApp).toEqual({
+      config: LEAD_RULE_CONFIG,
+      configStatus: 'ok',
+      configProblems: [],
+      adminRoleId: ADMIN_ROLE_ID,
+    });
   });
 
   it('keeps one memo per workspace', async () => {

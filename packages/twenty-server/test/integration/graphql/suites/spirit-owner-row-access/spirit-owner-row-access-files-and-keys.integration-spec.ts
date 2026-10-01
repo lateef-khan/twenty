@@ -611,7 +611,7 @@ describe('spirit owner row access: files, AI email tool, MCP and API keys', () =
       expect(response.body.errors).toBeDefined();
     });
 
-    it('D14: createOne through the key stores owner NULL even when it names bob, and the key cannot read the row back', async () => {
+    it('D14: createOne through the key stores owner NULL even when it names bob, answers with the new row, and the key cannot read the row back later', async () => {
       const created = await makeGraphqlAPIRequest(
         createOneOperationFactory({
           objectMetadataSingularName: 'company',
@@ -659,9 +659,13 @@ describe('spirit owner row access: files, AI email tool, MCP and API keys', () =
       expect(readBack.body.data?.company ?? null).toBeNull();
       expect(list.body.errors).toBeUndefined();
       expect(list.body.data.companies.totalCount).toBe(0);
-      // The row is committed, but the create call returns no row to the key
-      // (it errors)
-      expect(created.body.data?.createCompany ?? null).toBeNull();
+      // The create answers with the row it wrote; later reads stay filtered
+      expect(created.body.errors).toBeUndefined();
+      expect(created.body.data.createCompany).toEqual({
+        id: createdCompanyId,
+        name: `${records.prefix} K made by key`,
+        accountOwnerId: null,
+      });
     });
 
     it('control: an Admin API key reads the new row and A, B, C', async () => {

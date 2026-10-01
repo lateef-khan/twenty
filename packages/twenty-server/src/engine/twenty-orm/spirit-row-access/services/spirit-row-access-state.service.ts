@@ -17,6 +17,7 @@ import { type FlatRoleMaps } from 'src/engine/metadata-modules/flat-role/types/f
 import {
   SPIRIT_ROW_ACCESS_APPLICATION_UNIVERSAL_IDENTIFIER,
   SPIRIT_ROW_ACCESS_CONFIG_VARIABLE_KEY,
+  SPIRIT_ROW_ACCESS_OWN_APPLICATION_UNIVERSAL_IDENTIFIERS,
 } from 'src/engine/twenty-orm/spirit-row-access/constants/spirit-row-access-application.constant';
 import {
   type SpiritRowAccessConfigStatus,
@@ -39,16 +40,9 @@ type StateInputs = {
   flatFieldMetadataMaps: FlatEntityMaps<OrmFlatFieldMetadata>;
   flatRoleMaps: FlatRoleMaps;
   workspaceCustomApplicationId: string | undefined;
+  ownApplicationIds: string[];
 };
 
-// The single reader of the row-access config, used by the repository
-// context loader and by the live-update publisher. The variable is read from
-// the existing applicationVariableMaps cache key, so an admin's
-// updateOneApplicationVariable (which invalidates that key) reaches every
-// process through the cache hash. Decrypt + parse runs once per stored
-// ciphertext; validation runs once per (config, metadata) version, and the
-// same state object is returned until one of them changes, so caches keyed
-// by the state (the gating graph) stay warm.
 @Injectable()
 export class SpiritRowAccessStateService {
   private readonly logger = new Logger(SpiritRowAccessStateService.name);
@@ -123,6 +117,11 @@ export class SpiritRowAccessStateService {
       flatFieldMetadataMaps: flatFieldMetadataMapsOrm,
       flatRoleMaps,
       workspaceCustomApplicationId,
+      ownApplicationIds:
+        SPIRIT_ROW_ACCESS_OWN_APPLICATION_UNIVERSAL_IDENTIFIERS.map(
+          (universalIdentifier) =>
+            flatApplicationMaps.idByUniversalIdentifier[universalIdentifier],
+        ).filter(isDefined),
     };
 
     const memoized = this.snapshotByWorkspaceId.get(workspaceId);
@@ -135,7 +134,9 @@ export class SpiritRowAccessStateService {
       memoized.inputs.flatFieldMetadataMaps === inputs.flatFieldMetadataMaps &&
       memoized.inputs.flatRoleMaps === inputs.flatRoleMaps &&
       memoized.inputs.workspaceCustomApplicationId ===
-        inputs.workspaceCustomApplicationId
+        inputs.workspaceCustomApplicationId &&
+      memoized.inputs.ownApplicationIds.join() ===
+        inputs.ownApplicationIds.join()
     ) {
       return memoized.snapshot;
     }
@@ -333,6 +334,7 @@ export class SpiritRowAccessStateService {
         flatRoleMaps: inputs.flatRoleMaps,
         workspaceMemberObjectMetadataId: objectIdByNameSingular.workspaceMember,
         workspaceCustomApplicationId: inputs.workspaceCustomApplicationId,
+        ownApplicationIds: inputs.ownApplicationIds,
       });
 
       if (validation.isValid) {

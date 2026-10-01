@@ -15,6 +15,7 @@ const PERSON_ID = 'object-person';
 const TIMELINE_ACTIVITY_ID = 'object-timeline-activity';
 const CUSTOM_OBJECT_ID = 'object-custom-rocket';
 const OTHER_APP_OBJECT_ID = 'object-other-app-invoice';
+const OWN_APP_OBJECT_ID = 'object-own-app-lead';
 const WORKSPACE_MEMBER_ID = 'object-workspace-member';
 const ACCOUNT_OWNER_ID = 'field-account-owner';
 const OPPORTUNITY_OWNER_ID = 'field-opportunity-owner';
@@ -23,12 +24,14 @@ const PERSON_OWNER_ID = 'field-person-owner';
 const TIMELINE_ACTIVITY_MEMBER_ID = 'field-timeline-activity-member';
 const CUSTOM_OWNER_ID = 'field-custom-owner';
 const OTHER_APP_OWNER_ID = 'field-other-app-owner';
+const OWN_APP_OWNER_ID = 'field-own-app-owner';
 const WORKSPACE_MEMBER_SELF_ID = 'field-workspace-member-self';
 const NAME_FIELD_ID = 'field-name';
 const MANAGER_ROLE_ID = 'role-manager';
 const STANDARD_APPLICATION_ID = 'application-standard';
 const WORKSPACE_CUSTOM_APPLICATION_ID = 'application-workspace-custom';
 const OTHER_APPLICATION_ID = 'application-other-installed-app';
+const OWN_APPLICATION_ID = 'application-own-spirit-app';
 
 const buildMaps = <TEntity extends { id: string }>(entities: TEntity[]) =>
   ({
@@ -99,6 +102,14 @@ const flatObjectMetadataMaps = buildMaps([
     isActive: true,
   },
   {
+    id: OWN_APP_OBJECT_ID,
+    nameSingular: 'lead',
+    universalIdentifier: 'an-own-app-object-universal-identifier',
+    applicationId: OWN_APPLICATION_ID,
+    isSystem: false,
+    isActive: true,
+  },
+  {
     id: WORKSPACE_MEMBER_ID,
     nameSingular: 'workspaceMember',
     applicationId: STANDARD_APPLICATION_ID,
@@ -134,6 +145,7 @@ const flatFieldMetadataMaps = buildMaps([
   ),
   buildOwnerField(CUSTOM_OWNER_ID, CUSTOM_OBJECT_ID, 'rocketOwnerId'),
   buildOwnerField(OTHER_APP_OWNER_ID, OTHER_APP_OBJECT_ID, 'invoiceOwnerId'),
+  buildOwnerField(OWN_APP_OWNER_ID, OWN_APP_OBJECT_ID, 'ownerId'),
   buildOwnerField(
     WORKSPACE_MEMBER_SELF_ID,
     WORKSPACE_MEMBER_ID,
@@ -154,11 +166,10 @@ const flatRoleMaps = buildMaps([
 
 const validate = (
   rawConfig: unknown,
-  {
-    workspaceCustomApplicationId,
-  }: { workspaceCustomApplicationId: string | undefined } = {
-    workspaceCustomApplicationId: WORKSPACE_CUSTOM_APPLICATION_ID,
-  },
+  options: {
+    workspaceCustomApplicationId?: string | undefined;
+    ownApplicationIds?: string[];
+  } = {},
 ) =>
   validateSpiritRowAccessConfig({
     rawConfig,
@@ -166,8 +177,18 @@ const validate = (
     flatFieldMetadataMaps,
     flatRoleMaps,
     workspaceMemberObjectMetadataId: WORKSPACE_MEMBER_ID,
-    workspaceCustomApplicationId,
+    workspaceCustomApplicationId:
+      'workspaceCustomApplicationId' in options
+        ? options.workspaceCustomApplicationId
+        : WORKSPACE_CUSTOM_APPLICATION_ID,
+    ownApplicationIds: options.ownApplicationIds ?? [OWN_APPLICATION_ID],
   });
+
+const OWN_APP_RULE = {
+  objectMetadataId: OWN_APP_OBJECT_ID,
+  ownerFieldMetadataId: OWN_APP_OWNER_ID,
+  isEnabled: true,
+};
 
 const COMPANY_RULE = {
   objectMetadataId: COMPANY_ID,
@@ -380,7 +401,7 @@ describe('validateSpiritRowAccessConfig', () => {
     ).toEqual({
       isValid: false,
       problems: [
-        "rules[0] object invoice cannot hold a rule: only company, opportunity, task and the workspace's own custom objects can",
+        "rules[0] object invoice cannot hold a rule: only company, opportunity, task, the workspace's own custom objects and objects of our own apps can",
       ],
     });
   });
@@ -402,6 +423,30 @@ describe('validateSpiritRowAccessConfig', () => {
         { workspaceCustomApplicationId: undefined },
       ).isValid,
     ).toBe(false);
+  });
+
+  it('accepts a rule on an object of one of our own apps', () => {
+    expect(
+      validate({ version: 1, rules: [OWN_APP_RULE], seeAllRoleIds: [] }),
+    ).toEqual({
+      isValid: true,
+      config: { version: 1, rules: [OWN_APP_RULE], seeAllRoleIds: [] },
+      droppedSeeAllRoleIds: [],
+    });
+  });
+
+  it('refuses the same object when its app is not one of our own apps (D41)', () => {
+    expect(
+      validate(
+        { version: 1, rules: [OWN_APP_RULE], seeAllRoleIds: [] },
+        { ownApplicationIds: [OTHER_APPLICATION_ID] },
+      ),
+    ).toEqual({
+      isValid: false,
+      problems: [
+        "rules[0] object lead cannot hold a rule: only company, opportunity, task, the workspace's own custom objects and objects of our own apps can",
+      ],
+    });
   });
 
   it('accepts rules on the audited objects: company, opportunity, task and a workspace custom object (D32, D41)', () => {

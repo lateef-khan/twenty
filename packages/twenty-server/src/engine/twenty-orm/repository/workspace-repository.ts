@@ -43,6 +43,7 @@ import { buildRowAccessPolicy } from 'src/engine/twenty-orm/utils/build-row-acce
 import { type RolePermissionConfig } from 'src/engine/twenty-orm/types/role-permission-config';
 import {
   applySpiritOwnerRuleToPolicy,
+  isSpiritInsertHiddenFromCaller,
   prepareSpiritOwnerInsert,
 } from 'src/engine/twenty-orm/spirit-row-access/utils/spirit-row-access-repository.util';
 import { isObjectOperationPermitted } from 'src/engine/twenty-orm/utils/is-object-operation-permitted.util';
@@ -227,6 +228,10 @@ export class WorkspaceRepository<TEntity extends ObjectLiteral = ObjectRecord> {
 
   getInternalContext(): WorkspaceInternalContext {
     return this.options.internalContext;
+  }
+
+  get isSpiritInsertHiddenFromCaller(): boolean {
+    return isSpiritInsertHiddenFromCaller(this.options);
   }
 
   get internalContext(): WorkspaceInternalContext {

@@ -10,6 +10,7 @@ import { type SpiritRowAccessState } from 'src/engine/twenty-orm/spirit-row-acce
 import { SPIRIT_ROW_ACCESS_ENFORCED_ENV_NAME } from 'src/engine/twenty-orm/spirit-row-access/utils/is-spirit-row-access-enforced.util';
 import {
   applySpiritOwnerRuleToPolicy,
+  isSpiritInsertHiddenFromCaller,
   prepareSpiritOwnerInsert,
   type SpiritRepositoryOptions,
 } from 'src/engine/twenty-orm/spirit-row-access/utils/spirit-row-access-repository.util';
@@ -281,6 +282,53 @@ describe('spirit row access in the repository', () => {
       expect(prepared.lockCheckedColumns(['accountOwnerId'])).toEqual([
         'accountOwnerId',
       ]);
+    });
+  });
+
+  // The create runner reads such rows back past the rule, for their creator only
+  describe('isSpiritInsertHiddenFromCaller', () => {
+    it('is true for a caller with no member and no see-all role on a rule object', () => {
+      expect(
+        isSpiritInsertHiddenFromCaller(
+          buildOptions({ authContext: apiKeyAuthContext }),
+        ),
+      ).toBe(true);
+    });
+
+    it('is false for a Member, who owns and reads what she creates', () => {
+      expect(isSpiritInsertHiddenFromCaller(buildOptions())).toBe(false);
+    });
+
+    it('is false for a see-all caller with no member', () => {
+      expect(
+        isSpiritInsertHiddenFromCaller(
+          buildOptions({
+            authContext: apiKeyAuthContext,
+            roleId: ADMIN_ROLE_ID,
+          }),
+        ),
+      ).toBe(false);
+    });
+
+    it('is false on an object with no rule', () => {
+      expect(
+        isSpiritInsertHiddenFromCaller(
+          buildOptions({
+            authContext: apiKeyAuthContext,
+            objectName: 'person',
+          }),
+        ),
+      ).toBe(false);
+    });
+
+    it('is false while enforcement is off', () => {
+      delete process.env[SPIRIT_ROW_ACCESS_ENFORCED_ENV_NAME];
+
+      expect(
+        isSpiritInsertHiddenFromCaller(
+          buildOptions({ authContext: apiKeyAuthContext }),
+        ),
+      ).toBe(false);
     });
   });
 });

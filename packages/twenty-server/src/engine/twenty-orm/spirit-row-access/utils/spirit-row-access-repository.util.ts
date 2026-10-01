@@ -125,10 +125,11 @@ const resolveOwnerInsertOverride = (
   return { joinColumnName, workspaceMemberId: caller.workspaceMemberId };
 };
 
-// A caller who is not see-all always owns what they create: their member id
-// replaces any owner in the input, and a caller with no member gets a null
-// owner, which only see-all roles can read. The server sets that column, so
-// the owner column lock guards updates only.
+
+export const isSpiritInsertHiddenFromCaller = (
+  options: SpiritRepositoryOptions,
+): boolean => resolveOwnerInsertOverride(options)?.workspaceMemberId === null;
+
 export const prepareSpiritOwnerInsert = <
   TRecord extends Record<string, unknown>,
 >(
