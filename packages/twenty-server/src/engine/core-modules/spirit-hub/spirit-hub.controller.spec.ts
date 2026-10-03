@@ -1,8 +1,16 @@
-import { UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  UnauthorizedException,
+} from '@nestjs/common';
 
 import { QueryFailedError } from 'typeorm';
 
 import { SpiritHubController } from 'src/engine/core-modules/spirit-hub/spirit-hub.controller';
+import {
+  PermissionsException,
+  PermissionsExceptionCode,
+} from 'src/engine/metadata-modules/permissions/permissions.exception';
 
 // The controller gets every service as a fake below; mocking the modules keeps
 // jest from loading their whole dependency graph.
@@ -16,6 +24,9 @@ jest.mock(
   'src/engine/core-modules/user-workspace/user-workspace.service',
   () => ({ UserWorkspaceService: class {} }),
 );
+jest.mock('src/engine/core-modules/user/services/user.service', () => ({
+  UserService: class {},
+}));
 
 const SECRET = 'spirit-hub-test-secret';
 const WORKSPACE = { id: '57c5b52a-81e1-48a1-b7da-abf5b68402e8' };
@@ -31,13 +42,20 @@ const NEW_USER = {
 };
 
 const buildController = () => {
-  const userRepository = { findOneBy: jest.fn() };
+  const userRepository = { findOneBy: jest.fn(), findOne: jest.fn() };
   const workspaceRepository = {
     find: jest.fn().mockResolvedValue([WORKSPACE]),
   };
   const signInUpService = { signInUpOnExistingWorkspace: jest.fn() };
   const userWorkspaceService = {
     addUserToWorkspaceIfUserNotInWorkspace: jest
+      .fn()
+      .mockResolvedValue(undefined),
+    getUserCount: jest.fn().mockResolvedValue(2),
+  };
+
+  const userService = {
+    deleteUserWorkspaceAndPotentiallyDeleteUser: jest
       .fn()
       .mockResolvedValue(undefined),
   };
@@ -50,6 +68,7 @@ const buildController = () => {
     userWorkspaceService as never,
     userRepository as never,
     workspaceRepository as never,
+    userService as never,
   );
 
   return {
@@ -57,6 +76,7 @@ const buildController = () => {
     userRepository,
     signInUpService,
     userWorkspaceService,
+    userService,
   };
 };
 
@@ -168,5 +188,105 @@ describe('SpiritHubController.createUser', () => {
       controller.createUser('Bearer wrong', NEW_USER),
     ).rejects.toThrow(UnauthorizedException);
     expect(userRepository.findOneBy).not.toHaveBeenCalled();
+  });
+});
+
+describe('SpiritHubController.deleteUser', () => {
+  const originalSecret = process.env.SPIRIT_HUB_SECRET;
+
+  beforeEach(() => {
+    process.env.SPIRIT_HUB_SECRET = SECRET;
+  });
+
+  afterAll(() => {
+    process.env.SPIRIT_HUB_SECRET = originalSecret;
+  });
+
+  it('refuses a wrong bearer', async () => {
+    const { controller } = buildController();
+
+    await expect(
+      controller.deleteUser('Bearer nope', ADMIN.id),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('answers 400 for an id that is not a UUID, without asking the database', async () => {
+    const { controller, userRepository } = buildController();
+
+    await expect(
+      controller.deleteUser(`Bearer ${SECRET}`, 'not-a-uuid'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(userRepository.findOne).not.toHaveBeenCalled();
+  });
+
+  it('removes the member from the only workspace', async () => {
+    const { controller, userRepository, userService } = buildController();
+
+    userRepository.findOne.mockResolvedValue({
+      id: ADMIN.id,
+      userWorkspaces: [{ workspaceId: WORKSPACE.id }],
+    });
+
+    await controller.deleteUser(`Bearer ${SECRET}`, ADMIN.id);
+
+    expect(
+      userService.deleteUserWorkspaceAndPotentiallyDeleteUser,
+    ).toHaveBeenCalledWith({ userId: ADMIN.id, workspaceId: WORKSPACE.id });
+  });
+
+  it('does nothing for a user who is gone or outside the workspace', async () => {
+    const { controller, userRepository, userService } = buildController();
+
+    userRepository.findOne.mockResolvedValue(null);
+    await controller.deleteUser(`Bearer ${SECRET}`, ADMIN.id);
+    userRepository.findOne.mockResolvedValue({
+      id: ADMIN.id,
+      userWorkspaces: [],
+    });
+    await controller.deleteUser(`Bearer ${SECRET}`, ADMIN.id);
+
+    expect(
+      userService.deleteUserWorkspaceAndPotentiallyDeleteUser,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('answers 409 for the last admin', async () => {
+    const { controller, userRepository, userService } = buildController();
+
+    userRepository.findOne.mockResolvedValue({
+      id: ADMIN.id,
+      userWorkspaces: [{ workspaceId: WORKSPACE.id }],
+    });
+    userService.deleteUserWorkspaceAndPotentiallyDeleteUser.mockRejectedValue(
+      new PermissionsException(
+        'last admin',
+        PermissionsExceptionCode.CANNOT_DELETE_LAST_ADMIN_USER,
+      ),
+    );
+
+    await expect(
+      controller.deleteUser(`Bearer ${SECRET}`, ADMIN.id),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('answers 409 and removes nothing for the only member, which would delete the workspace', async () => {
+    const { controller, userRepository, userService, userWorkspaceService } =
+      buildController();
+
+    userRepository.findOne.mockResolvedValue({
+      id: ADMIN.id,
+      userWorkspaces: [{ workspaceId: WORKSPACE.id }],
+    });
+    userWorkspaceService.getUserCount.mockResolvedValue(1);
+
+    await expect(
+      controller.deleteUser(`Bearer ${SECRET}`, ADMIN.id),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(userWorkspaceService.getUserCount).toHaveBeenCalledWith(
+      WORKSPACE.id,
+    );
+    expect(
+      userService.deleteUserWorkspaceAndPotentiallyDeleteUser,
+    ).not.toHaveBeenCalled();
   });
 });

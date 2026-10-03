@@ -1,10 +1,14 @@
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
+  Delete,
   Get,
   Headers,
+  HttpCode,
   InternalServerErrorException,
+  Param,
   Post,
   Query,
   Res,
@@ -19,7 +23,7 @@ import { createHash, timingSafeEqual } from 'crypto';
 import { isNonEmptyString, isString } from '@sniptt/guards';
 import { Response } from 'express';
 import { ApiPath } from 'twenty-shared/types';
-import { isDefined } from 'twenty-shared/utils';
+import { isDefined, isValidUuid } from 'twenty-shared/utils';
 import { QueryFailedError, Repository } from 'typeorm';
 
 import { POSTGRESQL_ERROR_CODES } from 'src/engine/api/graphql/workspace-query-runner/constants/postgres-error-codes.constants';
@@ -29,11 +33,16 @@ import { SignInUpService } from 'src/engine/core-modules/auth/services/sign-in-u
 import { LoginTokenService } from 'src/engine/core-modules/auth/token/services/login-token.service';
 import { SpiritHubNoteService } from 'src/engine/core-modules/spirit-hub/spirit-hub-note.service';
 import { UserWorkspaceService } from 'src/engine/core-modules/user-workspace/user-workspace.service';
+import { UserService } from 'src/engine/core-modules/user/services/user.service';
 import { UserEntity } from 'src/engine/core-modules/user/user.entity';
 import { AuthProviderEnum } from 'src/engine/core-modules/workspace/types/workspace.type';
 import { WorkspaceEntity } from 'src/engine/core-modules/workspace/workspace.entity';
 import { NoPermissionGuard } from 'src/engine/guards/no-permission.guard';
 import { PublicEndpointGuard } from 'src/engine/guards/public-endpoint.guard';
+import {
+  PermissionsException,
+  PermissionsExceptionCode,
+} from 'src/engine/metadata-modules/permissions/permissions.exception';
 
 type SpiritHubNewUser = {
   email?: unknown;
@@ -73,6 +82,7 @@ export class SpiritHubController {
     private readonly userRepository: Repository<UserEntity>,
     @InjectRepository(WorkspaceEntity)
     private readonly workspaceRepository: Repository<WorkspaceEntity>,
+    private readonly userService: UserService,
   ) {}
 
   @Get()
@@ -163,6 +173,58 @@ export class SpiritHubController {
       }
 
       return this.adoptUser(winner, workspace);
+    }
+  }
+
+  // A user outside the workspace, or already gone, is a no-op so a retry
+  // after a half-finished removal still succeeds.
+  @Delete('users/:id')
+  @HttpCode(204)
+  @UseGuards(PublicEndpointGuard, NoPermissionGuard)
+  async deleteUser(
+    @Headers('authorization') authorization: string | undefined,
+    @Param('id') id: string,
+  ): Promise<void> {
+    if (!isSpiritHubBearer(authorization)) {
+      throw new UnauthorizedException();
+    }
+
+    if (!isValidUuid(id)) {
+      throw new BadRequestException('The user id is not a UUID.');
+    }
+
+    const workspace = await this.findOnlyWorkspace();
+    const user = await this.userRepository.findOne({
+      where: { id },
+      relations: { userWorkspaces: true },
+    });
+
+    if (
+      !isDefined(user) ||
+      !user.userWorkspaces.some((uw) => uw.workspaceId === workspace.id)
+    ) {
+      return;
+    }
+
+    // With one member left the service deletes the whole workspace.
+    if ((await this.userWorkspaceService.getUserCount(workspace.id)) === 1) {
+      throw new ConflictException("This is the workspace's last member.");
+    }
+
+    try {
+      await this.userService.deleteUserWorkspaceAndPotentiallyDeleteUser({
+        userId: id,
+        workspaceId: workspace.id,
+      });
+    } catch (error) {
+      if (
+        error instanceof PermissionsException &&
+        error.code === PermissionsExceptionCode.CANNOT_DELETE_LAST_ADMIN_USER
+      ) {
+        throw new ConflictException("This is the workspace's last admin.");
+      }
+
+      throw error;
     }
   }
 
